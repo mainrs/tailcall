@@ -1,138 +1,63 @@
-use super::ValidationError;
 use crate::valid::Cause;
 
-#[derive(Debug, PartialEq)]
-pub struct Valid<A, E>(Result<A, ValidationError<E>>);
+use super::ValidationError;
 
-impl<A, E> Valid<A, E> {
-  pub fn fail(e: E) -> Valid<A, E> {
-    Valid(Err((vec![Cause::new(e)]).into()))
-  }
+pub type Valid<A, E> = Result<A, ValidationError<E>>;
 
-  pub fn from_validation_err(error: ValidationError<E>) -> Self {
-    Valid(Err(error))
-  }
+pub trait ValidStructCompatibility<A, E>: Sized {
+  fn fail(error: E) -> Valid<A, E>;
 
-  pub fn from_vec_cause(error: Vec<Cause<E>>) -> Self {
-    Valid(Err(error.into()))
-  }
+  fn from_validation_err(error: ValidationError<E>) -> Self;
 
-  pub fn map<A1>(self, f: impl FnOnce(A) -> A1) -> Valid<A1, E> {
-    Valid(self.0.map(f))
-  }
+  fn from_vec_cause(causes: Vec<Cause<E>>) -> Self;
 
-  pub fn succeed(a: A) -> Valid<A, E> {
-    Valid(Ok(a))
-  }
+  fn succeed(value: A) -> Valid<A, E>;
 
-  pub fn and<A1>(self, other: Valid<A1, E>) -> Valid<A1, E> {
-    self.zip(other).map(|(_, a1)| a1)
-  }
+  fn trace(self, message: &str) -> Valid<A, E>;
 
-  pub fn zip<A1>(self, other: Valid<A1, E>) -> Valid<(A, A1), E> {
-    match self.0 {
-      Ok(a) => match other.0 {
-        Ok(a1) => Valid(Ok((a, a1))),
-        Err(e1) => Valid(Err(e1)),
-      },
-      Err(e1) => match other.0 {
-        Ok(_) => Valid(Err(e1)),
-        Err(e2) => Valid(Err(e1.combine(e2))),
-      },
-    }
-  }
-
-  pub fn trace(self, message: &str) -> Valid<A, E> {
-    let valid = self.0;
-    if let Err(error) = valid {
-      return Valid(Err(error.trace(message)));
-    }
-
-    Valid(valid)
-  }
-
-  pub fn fold<A1>(self, ok: impl Fn(A) -> Valid<A1, E>, err: Valid<A1, E>) -> Valid<A1, E> {
-    match self.0 {
-      Ok(a) => ok(a),
-      Err(e) => Valid::<A1, E>(Err(e)).and(err),
-    }
-  }
-
-  pub fn from_iter<B>(iter: impl IntoIterator<Item = A>, f: impl Fn(A) -> Valid<B, E>) -> Valid<Vec<B>, E> {
-    let mut values: Vec<B> = Vec::new();
-    let mut errors: ValidationError<E> = ValidationError::empty();
-    for a in iter.into_iter() {
-      match f(a).to_result() {
-        Ok(b) => {
-          values.push(b);
-        }
-        Err(err) => {
-          errors = errors.combine(err);
-        }
-      }
-    }
-
-    if errors.is_empty() {
-      Valid::succeed(values)
-    } else {
-      Valid::from_validation_err(errors)
-    }
-  }
-
-  pub fn from_option(option: Option<A>, e: E) -> Valid<A, E> {
-    match option {
-      Some(a) => Valid::succeed(a),
-      None => Valid::fail(e),
-    }
-  }
-
-  pub fn to_result(self) -> Result<A, ValidationError<E>> {
-    self.0
-  }
-
-  pub fn and_then<B>(self, f: impl FnOnce(A) -> Valid<B, E>) -> Valid<B, E> {
-    match self.0 {
-      Ok(a) => f(a),
-      Err(e) => Valid(Err(e)),
-    }
-  }
-
-  pub fn unit(self) -> Valid<(), E> {
-    self.map(|_| ())
-  }
-
-  pub fn some(self) -> Valid<Option<A>, E> {
-    self.map(Some)
-  }
-
-  pub fn none() -> Valid<Option<A>, E> {
-    Valid::succeed(None)
-  }
-  pub fn map_to<B>(self, b: B) -> Valid<B, E> {
-    self.map(|_| b)
-  }
-  pub fn when(self, f: impl FnOnce() -> bool) -> Valid<(), E> {
+  fn when(self, f: impl FnOnce() -> bool) -> Valid<(), E> {
     if f() {
       self.unit()
     } else {
-      Valid::succeed(())
+      Self::succeed(())
     }
   }
+
+  fn map_to_unit(self) -> Valid<(), E>;
 }
 
-impl<A, E> From<Result<A, ValidationError<E>>> for Valid<A, E> {
-  fn from(value: Result<A, ValidationError<E>>) -> Self {
-    match value {
-      Ok(a) => Valid::succeed(a),
-      Err(e) => Valid::from_validation_err(e),
-    }
+impl<A, E> ValidStructCompatibility<A, E> for Valid<A, E> {
+  fn fail(error: E) -> Valid<A, E> {
+    Err(ValidationError::new(error))
+  }
+
+  fn from_validation_err(error: ValidationError<E>) -> Self {
+    Err(error)
+  }
+
+  fn from_vec_cause(causes: Vec<Cause<E>>) -> Self {
+    Err(causes.into())
+  }
+
+  fn succeed(value: A) -> Valid<A, E> {
+    Ok(value)
+  }
+
+  fn trace(self, message: &str) -> Valid<A, E> {
+    self.map_err(|err| err.trace(message))
+  }
+
+  fn map_to_unit(self) -> Valid<(), E> {
+    self.map(|_| ())
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{Cause, ValidationError};
   use crate::valid::valid::Valid;
+  use crate::valid::{ValidStructCompatibility, ValidateAll};
+
+  use super::{Cause, ValidationError};
 
   #[test]
   fn test_ok() {
@@ -173,17 +98,14 @@ mod tests {
   #[test]
   fn test_validate_all() {
     let input: Vec<i32> = [1, 2, 3].to_vec();
-    let result: Valid<Vec<i32>, i32> = Valid::from_iter(input, |a| Valid::fail(a * 2));
-    assert_eq!(
-      result,
-      Valid::from_vec_cause(vec![Cause::new(2), Cause::new(4), Cause::new(6)])
-    );
+    let result: Valid<Vec<i32>, i32> = input.validate_all(|a| Valid::fail(a * 2));
+    assert_eq!(result, Err(vec![Cause::new(2), Cause::new(4), Cause::new(6)]));
   }
 
   #[test]
   fn test_validate_all_ques() {
     let input: Vec<i32> = [1, 2, 3].to_vec();
-    let result: Valid<Vec<i32>, i32> = Valid::from_iter(input, |a| Valid::fail(a * 2));
+    let result: Valid<Vec<i32>, i32> = input.validate_all(|a| Valid::fail(a * 2));
     assert_eq!(
       result,
       Valid::from_vec_cause(vec![Cause::new(2), Cause::new(4), Cause::new(6)])
@@ -235,6 +157,7 @@ mod tests {
 
     assert_eq!(result1.zip(result2), Valid::succeed((true, 3u8)));
   }
+
   #[test]
   fn test_validate_both_first_fail() {
     let result1 = Valid::<bool, i32>::fail(-1);
@@ -242,6 +165,7 @@ mod tests {
 
     assert_eq!(result1.zip(result2), Valid::fail(-1));
   }
+
   #[test]
   fn test_validate_both_second_fail() {
     let result1 = Valid::<bool, i32>::succeed(true);

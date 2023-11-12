@@ -23,7 +23,7 @@ use crate::lambda::Expression::Literal;
 use crate::lambda::{Expression, Lambda, Operation};
 use crate::request_template::RequestTemplate;
 use crate::try_fold::TryFold;
-use crate::valid::{Valid, ValidationError};
+use crate::valid::{Valid, ValidStructCompatibility, ValidationError};
 use crate::{blueprint, config};
 
 type TryFoldConfig<'a, A> = TryFold<'a, Config, A, String>;

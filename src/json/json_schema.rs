@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_graphql::Name;
 use serde::{Deserialize, Serialize};
 
-use crate::valid::Valid;
+use crate::valid::{Valid, ValidateAll, ValidStructCompatibility};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename = "schema")]
@@ -51,7 +51,7 @@ impl JsonSchema {
       JsonSchema::Arr(schema) => match value {
         async_graphql::Value::List(list) => {
           // TODO: add unit tests
-          Valid::from_iter(list.iter().enumerate(), |(i, item)| {
+          list.iter().enumerate().validate_all(|(i, item)| {
             schema.validate(item).trace(i.to_string().as_str())
           })
           .unit()
@@ -105,7 +105,7 @@ mod tests {
   use indexmap::IndexMap;
 
   use crate::json::JsonSchema;
-  use crate::valid::Valid;
+  use crate::valid::{Valid, ValidStructCompatibility};
 
   #[test]
   fn test_validate_string() {

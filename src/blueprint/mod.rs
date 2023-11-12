@@ -1,6 +1,7 @@
 mod blueprint;
 mod compress;
 mod from_config;
+mod from_config2;
 mod into_schema;
 mod timeout;
 

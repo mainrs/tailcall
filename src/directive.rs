@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use serde_path_to_error::deserialize;
 
-use crate::valid::{Valid, ValidationError};
+use crate::valid::{Valid, ValidStructCompatibility, ValidationError, ValidateAll};
 
 fn pos<A>(a: A) -> Positioned<A> {
   Positioned::new(a, Pos::default())
 }
 
 fn from_directive<'a, A: Deserialize<'a>>(directive: &'a ConstDirective) -> Valid<A, String> {
-  Valid::from_iter(directive.arguments.iter(), |(k, v)| {
+  directive.arguments.iter().validate_all(|(k, v)| {
     Valid::from(
       serde_json::to_value(&v.node)
         .map_err(|e| ValidationError::new(e.to_string()).trace(format!("@{}", directive.name.node).as_str())),

@@ -14,7 +14,7 @@ use crate::config::source::Source;
 use crate::config::{is_default, KeyValues};
 use crate::http::Method;
 use crate::json::JsonSchema;
-use crate::valid::Valid;
+use crate::valid::{Valid, ValidStructCompatibility};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Setters)]
 #[serde(rename_all = "camelCase")]
@@ -161,6 +161,10 @@ pub struct GraphQL {
 }
 
 impl GraphQL {
+  pub(crate) fn find_type(&self, name: &str) -> Option<&Type> {
+    self.types.get(name)
+  }
+
   pub fn merge_right(mut self, other: Self) -> Self {
     for (name, mut other_type) in other.types {
       if let Some(self_type) = self.types.remove(&name) {
@@ -338,7 +342,7 @@ impl Config {
 
   pub fn from_source(source: Source, schema: &str) -> Result<Self> {
     match source {
-      Source::GraphQL => Ok(Config::from_sdl(schema).to_result()?),
+      Source::GraphQL => Ok(Config::from_sdl(schema)?),
       Source::Json => Ok(Config::from_json(schema)?),
       Source::Yml => Ok(Config::from_yaml(schema)?),
     }

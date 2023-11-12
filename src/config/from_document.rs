@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::collections::BTreeMap;
+use async_graphql::futures_util::StreamExt;
 
 use async_graphql::parser::types::{
   BaseType, ConstDirective, EnumType, FieldDefinition, InputObjectType, InputValueDefinition, SchemaDefinition,
@@ -11,7 +12,7 @@ use async_graphql::Name;
 
 use crate::config::{self, Config, GraphQL, Http, RootSchema, Server, Union, Upstream};
 use crate::directive::DirectiveCodec;
-use crate::valid::{Valid, ValidationError};
+use crate::valid::{Valid, ValidationError, ValidStructCompatibility};
 
 fn from_document(doc: ServiceDocument) -> Valid<Config, String> {
   schema_definition(&doc)
@@ -222,7 +223,7 @@ fn to_common_field(
 fn to_unsafe_operation(directives: &[Positioned<ConstDirective>]) -> Option<config::Unsafe> {
   directives.iter().find_map(|directive| {
     if directive.node.name.node == "unsafe" {
-      config::Unsafe::from_directive(&directive.node).to_result().ok()
+      config::Unsafe::from_directive(&directive.node).ok()
     } else {
       None
     }
@@ -274,7 +275,7 @@ fn to_modify(directives: &[Positioned<ConstDirective>]) -> Option<config::Modify
 fn to_inline(directives: &[Positioned<ConstDirective>]) -> Option<config::InlineType> {
   directives.iter().find_map(|directive| {
     if directive.node.name.node == "inline" {
-      config::InlineType::from_directive(&directive.node).to_result().ok()
+      config::InlineType::from_directive(&directive.node).ok()
     } else {
       None
     }
@@ -299,7 +300,7 @@ fn to_union(union_type: UnionType, doc: &Option<String>) -> Union {
 fn to_const_field(directives: &[Positioned<ConstDirective>]) -> Option<config::ConstField> {
   directives.iter().find_map(|directive| {
     if directive.node.name.node == "const" {
-      config::ConstField::from_directive(&directive.node).to_result().ok()
+      config::ConstField::from_directive(&directive.node).ok()
     } else {
       None
     }
@@ -324,6 +325,6 @@ impl TryFrom<ServiceDocument> for Config {
   type Error = ValidationError<String>;
 
   fn try_from(value: ServiceDocument) -> Result<Self, ValidationError<String>> {
-    from_document(value).to_result()
+    from_document(value)
   }
 }
